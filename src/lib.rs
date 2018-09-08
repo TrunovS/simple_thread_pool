@@ -11,6 +11,16 @@ use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+trait FnBox {
+    fn call_box(self: Box<Self>);
+}
+
+impl<F: FnOnce() + Send> FnBox for F {
+    fn call_box(self: Box<F>) {
+        (*self)()
+    }
+}
+
 type Job = Box<FnOnce() + Send + 'static>;
 type AtomicMutexJobReciever = Arc<Mutex<mpsc::Receiver<Job>>>;
 
@@ -26,6 +36,7 @@ impl Worker {
             loop {
                 let recv: &mpsc::Receiver<Job>  = &*(receiver.lock().unwrap());
                 let job = recv.recv().unwrap();
+                job.call_box();
 
                 println!("Worker {} has a job",id);
             }
