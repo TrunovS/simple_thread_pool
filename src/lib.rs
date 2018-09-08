@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 type Job = Box<FnOnce() + Send + 'static>;
+type AtomicMutexJobReciever = Arc<Mutex<mpsc::Receiver<Job>>>;
 
 struct Worker {
     id: usize,
@@ -19,10 +20,16 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Worker {
+    fn new(id: usize, receiver: AtomicMutexJobReciever) -> Worker {
 
-        let handle = thread::spawn(|| {
-            receiver;
+        let handle = thread::spawn(move || {
+            loop {
+                let recv: &mpsc::Receiver<Job>  = &*(receiver.lock().unwrap());
+                let job = recv.recv().unwrap();
+
+                println!("Worker {} has a job",id);
+            }
+
             });
 
         Worker {
@@ -68,6 +75,7 @@ impl ThreadPool {
         where
         F: FnOnce() + Send + 'static
     {
-
+        let job = Box::new(f);
+        self.sender.send(job).unwrap();
     }
 }
