@@ -34,8 +34,7 @@ impl Worker {
 
         let handle = thread::spawn(move || {
             loop {
-                let recv: &mpsc::Receiver<Job>  = &*(receiver.lock().unwrap());
-                let job = recv.recv().unwrap();
+                let job = receiver.lock().unwrap().recv().unwrap();
                 job.call_box();
 
                 println!("Worker {} has a job",id);
