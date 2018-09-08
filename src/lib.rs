@@ -15,13 +15,13 @@ trait FnBox {
     fn call_box(self: Box<Self>);
 }
 
-impl<F: FnOnce() + Send> FnBox for F {
+impl<F: FnOnce()> FnBox for F {
     fn call_box(self: Box<F>) {
         (*self)()
     }
 }
 
-type Job = Box<FnOnce() + Send + 'static>;
+type Job = Box<FnBox + Send + 'static>;
 type AtomicMutexJobReciever = Arc<Mutex<mpsc::Receiver<Job>>>;
 
 struct Worker {
