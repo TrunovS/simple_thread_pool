@@ -22,11 +22,16 @@ impl<F: FnOnce()> FnBox for F {
 }
 
 type Job = Box<FnBox + Send + 'static>;
-type AtomicMutexJobReciever = Arc<Mutex<mpsc::Receiver<Job>>>;
+type AtomicMutexJobReciever = Arc<Mutex<mpsc::Receiver<Message>>>;
+
+enum Message {
+    NewJob(Job),
+    Terminate,
+}
 
 struct Worker {
     id: usize,
-    handle: thread::JoinHandle<()>,
+    handle: Option<thread::JoinHandle<()>>,
 }
 
 impl Worker {
@@ -34,24 +39,32 @@ impl Worker {
 
         let handle = thread::spawn(move || {
             loop {
-                let job = receiver.lock().unwrap().recv().unwrap();
-                job.call_box();
+                let message = receiver.lock().unwrap().recv().unwrap();
 
-                println!("Worker {} has a job",id);
+                match message {
+                    Message::NewJob(job) => {
+                        println!("Worker {} has a job. Executing...",id);
+                        job.call_box();
+                        println!("Worker {}: job done.",id);
+                    },
+                    Message::Terminate => {
+                        println!("Worker {} was told to terminate.Stop executing.", id);
+                        break;
+                    }
+                }
             }
-
             });
 
         Worker {
             id,
-            handle,
+            handle: Some(handle),
         }
     }
 }
 
 pub struct ThreadPool {
     workers: Vec<Worker>,
-    sender: mpsc::Sender<Job>,
+    sender: mpsc::Sender<Message>,
 }
 
 
@@ -86,6 +99,27 @@ impl ThreadPool {
         F: FnOnce() + Send + 'static
     {
         let job = Box::new(f);
-        self.sender.send(job).unwrap();
+        self.sender.send(Message::NewJob(job)).unwrap();
+    }
+}
+
+impl Drop for ThreadPool {
+    fn drop(&mut self)
+    {
+
+        println!("Send Terminate message to all workers.Breaking loop");
+
+        for _ in &mut self.workers {
+            self.sender.send(Message::Terminate).unwrap();
+        }
+
+        println!("ShutingDown all workers.");
+
+        for wrk in &mut self.workers {
+            println!("Shutting down worker {}",wrk.id);
+            if let Some(handle) = wrk.handle.take() {
+                handle.join().unwrap();
+            }
+        }
     }
 }
