@@ -22,7 +22,6 @@ impl<F: FnOnce()> FnBox for F {
 }
 
 type Job = Box<FnBox + Send + 'static>;
-type AtomicMutexJobReciever = Arc<Mutex<mpsc::Receiver<Message>>>;
 
 enum Message {
     NewJob(Job),
@@ -35,7 +34,7 @@ struct Worker {
 }
 
 impl Worker {
-    fn new(id: usize, receiver: AtomicMutexJobReciever) -> Worker {
+    fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Message>>>) -> Worker {
 
         let handle = thread::spawn(move || {
             loop {
@@ -67,18 +66,21 @@ pub struct ThreadPool {
     sender: mpsc::Sender<Message>,
 }
 
+pub enum PoolError {
+    SizeIsNull,
+}
 
 impl ThreadPool {
+
     /// Создаем экземпляры ThreadPool.
     ///
     /// The size is the number of threads in the pool.
     ///
     /// # Panics
-    ///
     /// The `new` function will panic if the size is zero.
-    pub fn new(size: usize) -> ThreadPool
+    pub fn new(size: usize) -> Result<ThreadPool,PoolError>
     {
-        assert!(size>0);
+        if size == 0 { return Err(PoolError::SizeIsNull); }
 
         let (sender, receiver) = mpsc::channel();
         let receiver = Arc::new(Mutex::new(receiver));
@@ -88,10 +90,10 @@ impl ThreadPool {
             workers.push(Worker::new(wid, Arc::clone(&receiver)))
         }
 
-        ThreadPool {
+        Ok(ThreadPool {
             workers,
             sender
-        }
+        })
     }
 
     pub fn execute<F>(&self, f: F)
