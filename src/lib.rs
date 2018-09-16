@@ -66,6 +66,7 @@ pub struct ThreadPool {
     sender: mpsc::Sender<Message>,
 }
 
+#[derive(Debug)]
 pub enum PoolError {
     SizeIsNull,
 }
